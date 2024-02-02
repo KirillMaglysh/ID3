@@ -1,20 +1,7 @@
 import math
 
 
-def get_uniq_items_with_number_for_column(data, column: int) -> dict:
-    items = {}
-    dim1Size: int = len(data)
-    for i in range(0, dim1Size):
-        x = data[i][column]
-        if items.__contains__(x):
-            items[x] = items[x] + 1
-        else:
-            items[x] = 1
-
-    return items
-
-
-def get_uniq_items_with_number(data) -> dict:
+def get_uniq_items_with_number(data: []) -> dict:
     items = {}
     for x in data:
         if items.__contains__(x):
@@ -25,7 +12,7 @@ def get_uniq_items_with_number(data) -> dict:
     return items
 
 
-def calculate_entropy_for_array(data) -> float:
+def calculate_array_entropy(data: []) -> float:
     items = get_uniq_items_with_number(data)
     entropy = 0
     setSize = len(data)
@@ -36,7 +23,7 @@ def calculate_entropy_for_array(data) -> float:
     return entropy
 
 
-def most_common_item(data) -> int:
+def most_common_item(data: []) -> int:
     items = get_uniq_items_with_number(data)
     cnt = 0
     x = data[0]
@@ -48,13 +35,13 @@ def most_common_item(data) -> int:
     return x
 
 
-def split_by_param(data, categories, best_dim, split_val):
+def split_data_by_border(data: [[]], categories: [], best_dim: int, split_border: int) -> ([[]], [], [[]], []):
     left_data = []
     left_categories = []
     right_data = []
     right_categories = []
     for i in range(0, len(data)):
-        if data[i][best_dim] <= split_val:
+        if data[i][best_dim] <= split_border:
             left_data.append(data[i])
             left_categories.append(categories[i])
         else:
@@ -64,29 +51,39 @@ def split_by_param(data, categories, best_dim, split_val):
     return left_data, left_categories, right_data, right_categories
 
 
-def calc_gain(data, categories, border, dim):
-    setLess = []
-    setMore = []
-    sz = len(data)
-    for i in range(0, sz):
+def calc_gain(original: [], left_items: [], right_items: []) -> float:
+    left_entropy = calculate_array_entropy(left_items)
+    right_entropy = calculate_array_entropy(right_items)
+    initial_entropy = calculate_array_entropy(original)
+    items_number = len(original)
+
+    return initial_entropy - (len(left_items) / items_number) * left_entropy - (
+            len(right_items) / items_number) * right_entropy
+
+
+def split_categories_by_border(data: [[]], categories: [], dim: int, border: float) -> ([int], [int]):
+    left_items = []
+    right_items = []
+    for i in range(0, len(data)):
         if data[i][dim] <= border:
-            setLess.append(categories[i])
+            left_items.append(categories[i])
         else:
-            setMore.append(categories[i])
+            right_items.append(categories[i])
 
-    lEntropy = calculate_entropy_for_array(setLess)
-    rEntropy = calculate_entropy_for_array(setMore)
-    lSz = len(setLess)
-    rSz = len(setMore)
-    return calculate_entropy_for_array(categories) - (lSz / sz) * lEntropy - (rSz / sz) * rEntropy
+    return left_items, right_items
 
 
-def find_split_for_column(data, categories, dim):
+def calc_dimension_gain(data: [[]], categories: [], dim: int, border: float) -> float:
+    left_items, right_items = split_categories_by_border(data, categories, dim, border)
+    return calc_gain(categories, left_items, right_items)
+
+
+def find_split_for_dim(data: [[]], categories: [], dim: int) -> (float, float):
     best_gain = 0
     best_split = 0
 
     for i in range(0, len(data)):
-        gain = calc_gain(data, categories, data[i][dim], dim)
+        gain = calc_dimension_gain(data, categories, dim, data[i][dim])
         if gain > best_gain:
             best_gain = gain
             best_split = data[i][dim]
@@ -99,30 +96,43 @@ class DecisionTree:
 
     class Node:
         def __init__(self):
-            self.isLeaf: bool = True
+            self.isLeaf: bool = False
             self.category: int = -1
             self.paramId: int = -1
             self.border: int = -1
             self.leftKid = None
             self.rightKid = None
 
-    def __init__(self, data, categories):
+    def __init__(self, data: [[]], categories: []):
         self.root = self.Node()
-        self.build_tree(data, categories, self.root)
+        self.__build_tree(data, categories, self.root)
 
-    def build_tree(self, data, categories, node: Node):
-        if len(data) == 0 or calculate_entropy_for_array(categories) <= self.LEAF_ENTROPY:
-            node.isLeaf = True
-            node.category = most_common_item(categories)
+    def predict(self, data) -> int:
+        return self.__predict(self.root, data)
+
+    def __build_tree(self, data: [[]], categories: [], node: Node):
+        if len(data) == 0 or calculate_array_entropy(categories) <= self.LEAF_ENTROPY:
+            self.__fill_leaf(node, most_common_item(categories))
             return
 
-        dim_number = len(data[0])
+        left_data, left_categories, right_data, right_categories = self.split_data_for_information_gain_maximum(
+            data, categories, node)
 
+        node.leftKid = self.Node()
+        self.__build_tree(left_data, left_categories, node.leftKid)
+
+        node.rightKid = self.Node()
+        self.__build_tree(right_data, right_categories, node.rightKid)
+
+    @staticmethod
+    def split_data_for_information_gain_maximum(data: [[]], categories: [], node: Node) -> (
+            [[float]], [int], [[float]], [int]):
+        dim_number = len(data[0])
         best_dim = 0
         info_gain = 0
         split_pos = 0
         for dim in range(0, dim_number):
-            (info_gain_tmp, split_pos_tmp) = find_split_for_column(data, categories, dim)
+            (info_gain_tmp, split_pos_tmp) = find_split_for_dim(data, categories, dim)
             if info_gain_tmp > info_gain:
                 best_dim = dim
                 info_gain = info_gain_tmp
@@ -130,13 +140,18 @@ class DecisionTree:
 
         node.paramId = best_dim
         node.border = split_pos
-        (left_data, left_categories, right_data, right_categories) = split_by_param(data, categories, best_dim,
-                                                                                    split_pos)
+        return split_data_by_border(data, categories, best_dim, split_pos)
 
-        node.leftKid = self.Node()
-        self.build_tree(left_data, left_categories, node.leftKid)
+    @staticmethod
+    def __fill_leaf(node: Node, category: int):
+        node.isLeaf = True
+        node.category = category
 
-        node.rightKid = self.Node()
-        self.build_tree(right_data, right_categories, node.rightKid)
+    def __predict(self, node, data, ) -> int:
+        if node.isLeaf:
+            return node.category
 
-        return
+        if data[node.paramId] <= node.border:
+            return self.__predict(node.leftKid, data)
+        else:
+            return self.__predict(node.rightKid, data)
