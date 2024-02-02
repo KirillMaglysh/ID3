@@ -1,5 +1,7 @@
 import math
 
+import graphviz
+
 
 def get_uniq_items_with_number(data: []) -> dict:
     items = {}
@@ -24,6 +26,9 @@ def calculate_array_entropy(data: []) -> float:
 
 
 def most_common_item(data: []) -> int:
+    if len(data) == 0:
+        return -1
+
     items = get_uniq_items_with_number(data)
     cnt = 0
     x = data[0]
@@ -93,6 +98,7 @@ def find_split_for_dim(data: [[]], categories: [], dim: int) -> (float, float):
 
 class DecisionTree:
     LEAF_ENTROPY: float = 0.1
+    MAX_DEPTH: int = 6
 
     class Node:
         def __init__(self):
@@ -100,8 +106,8 @@ class DecisionTree:
             self.category: int = -1
             self.paramId: int = -1
             self.border: int = -1
-            self.leftKid = None
-            self.rightKid = None
+            self.left_kid = None
+            self.right_kid = None
 
     def __init__(self, data: [[]], categories: []):
         self.root = self.Node()
@@ -110,19 +116,27 @@ class DecisionTree:
     def predict(self, data) -> int:
         return self.__predict(self.root, data)
 
-    def __build_tree(self, data: [[]], categories: [], node: Node):
-        if len(data) == 0 or calculate_array_entropy(categories) <= self.LEAF_ENTROPY:
+    def draw_tree(self):
+        plot = graphviz.Digraph(comment='Decision tree built by ID3 algorithm')
+        self.__draw_tree(plot, self.root, 0)
+        plot.render(directory='tree-visual')
+
+    def draw_plot(self, axis, max_x, max_y):
+        self.__draw_plot(self.root, axis, max_x, max_y)
+
+    def __build_tree(self, data: [[]], categories: [], node: Node, depth=0):
+        if len(data) == 0 or depth > self.MAX_DEPTH or calculate_array_entropy(categories) <= self.LEAF_ENTROPY:
             self.__fill_leaf(node, most_common_item(categories))
             return
 
         left_data, left_categories, right_data, right_categories = self.split_data_for_information_gain_maximum(
             data, categories, node)
 
-        node.leftKid = self.Node()
-        self.__build_tree(left_data, left_categories, node.leftKid)
+        node.left_kid = self.Node()
+        self.__build_tree(left_data, left_categories, node.left_kid, depth + 1)
 
-        node.rightKid = self.Node()
-        self.__build_tree(right_data, right_categories, node.rightKid)
+        node.right_kid = self.Node()
+        self.__build_tree(right_data, right_categories, node.right_kid, depth + 1)
 
     @staticmethod
     def split_data_for_information_gain_maximum(data: [[]], categories: [], node: Node) -> (
@@ -152,6 +166,36 @@ class DecisionTree:
             return node.category
 
         if data[node.paramId] <= node.border:
-            return self.__predict(node.leftKid, data)
+            return self.__predict(node.left_kid, data)
         else:
-            return self.__predict(node.rightKid, data)
+            return self.__predict(node.right_kid, data)
+
+    def __draw_tree(self, graph, node: Node, node_id: int):
+        sub_tree_size = 1
+        if node.isLeaf:
+            graph.node(str(node_id), f'LEAF. TYPE= {node.category}')
+            return sub_tree_size
+        else:
+            graph.node(str(node_id), f'Param= {node.paramId}, \nBorder= {node.border}')
+
+        left_id = node_id + 1
+        sub_tree_size += self.__draw_tree(graph, node.left_kid, left_id)
+        right_id = node_id + sub_tree_size
+        sub_tree_size += self.__draw_tree(graph, node.right_kid, right_id)
+
+        graph.edge(str(node_id), str(left_id))
+        graph.edge(str(node_id), str(right_id))
+
+        return sub_tree_size
+
+    def __draw_plot(self, node: Node, axis, max_x, max_y):
+        if node.isLeaf:
+            return
+
+        if node.paramId == 0:
+            axis.vlines(node.border, 0, max_y)
+        else:
+            axis.hlines(node.border, 0, max_x)
+
+        self.__draw_plot(node.left_kid, axis, max_x, max_y)
+        self.__draw_plot(node.right_kid, axis, max_x, max_y)
